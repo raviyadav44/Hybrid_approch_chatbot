@@ -22,6 +22,8 @@ def init_session_state():
         st.session_state.event_data = {}
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
+    if 'show_greeting' not in st.session_state:
+        st.session_state.show_greeting = True
 
 # Event types based on ticketing
 TICKETED_EVENT_TYPES = [
@@ -57,7 +59,8 @@ DUBAI_VENUES = [
     "Dubai Convention Center",
     "Emirates Palace",
     "Burj Al Arab",
-    "Atlantis The Palm"
+    "Atlantis The Palm",
+    "Other"
 ]
 
 INDUSTRIES = [
@@ -140,6 +143,183 @@ def save_to_mongodb(event_data):
         st.error(f"Error saving to database: {e}")
         return None
 
+def handle_button_clicks():
+    """Handle all button clicks and update conversation state"""
+    
+    # Greeting buttons
+    if st.session_state.get('fee_calc_clicked'):
+        add_to_chat("I'd like to calculate government fees for my event", False)
+        st.session_state.conversation_step = 'event_classification'
+        st.session_state.show_greeting = False
+        st.session_state.fee_calc_clicked = False
+        return True
+    
+    if st.session_state.get('requirements_clicked'):
+        add_to_chat("I want to check document requirements", False)
+        requirements_message = """
+        **📋 DOCUMENT REQUIREMENTS CHECKER**
+        
+        For Dubai event permits, you'll typically need:
+        
+        **For All Events:**
+        ✅ Completed application form
+        ✅ Company trade license copy
+        ✅ Event concept/description
+        ✅ Venue booking confirmation
+        ✅ Event layout/floor plan
+        
+        **For External Events:**
+        ✅ Marketing materials/brochures
+        ✅ Speaker/performer details
+        ✅ Security plan (for large events)
+        ✅ Insurance certificate
+        
+        **For Paid Events:**
+        ✅ Ticketing system details
+        ✅ Revenue projections
+        ✅ Payment processing setup
+        
+        Would you like me to help calculate your fees as well?
+        """
+        add_to_chat(requirements_message)
+        st.session_state.requirements_clicked = False
+        return True
+    
+    if st.session_state.get('specialist_clicked'):
+        add_to_chat("I'd like to speak with a permit specialist", False)
+        specialist_message = """
+        **📞 SPECIALIST CONSULTATION**
+        
+        Our permit specialists can help with:
+        - Complex event scenarios
+        - Multi-venue events
+        - International performer permits
+        - Expedited processing
+        - Compliance reviews
+        
+        **Contact Information:**
+        📧 Email: permits@dubaievents.gov.ae
+        📱 Phone: +971-4-XXX-XXXX
+        🕐 Hours: Sunday-Thursday, 8:00 AM - 3:00 PM
+        
+        In the meantime, I can help you get started with fee calculations!
+        """
+        add_to_chat(specialist_message)
+        st.session_state.specialist_clicked = False
+        return True
+    
+    if st.session_state.get('general_clicked'):
+        add_to_chat("I have general permit questions", False)
+        general_message = """
+        **❓ GENERAL PERMIT INFORMATION**
+        
+        **Common Questions:**
+        
+        **Q: How long does permit processing take?**
+        A: 5-15 working days depending on event complexity
+        
+        **Q: Can I apply for multiple events at once?**
+        A: Yes, but each event needs a separate application
+        
+        **Q: What if my event details change?**
+        A: You must notify authorities within 48 hours of changes
+        
+        **Q: Are there restrictions on event timing?**
+        A: Yes, some venues have restrictions during Ramadan and national holidays
+        
+        For more specific questions, please refer to this [Dubai Events FAQ](https://epermits.det.gov.ae/ePermit/FAQDocumentEN.html) or contact our support team.
+
+        Let me help you calculate your specific event fees!
+        """
+        add_to_chat(general_message)
+        st.session_state.general_clicked = False
+        return True
+    
+    # Event classification buttons
+    if st.session_state.get('internal_clicked'):
+        add_to_chat("Internal Event - Company/organizational event for employees only", False)
+        st.session_state.event_data['event_classification'] = 'internal'
+        st.session_state.conversation_step = 'internal_event_info'
+        st.session_state.internal_clicked = False
+        return True
+    
+    if st.session_state.get('external_clicked'):
+        add_to_chat("External Event - Event with external guests, clients, or public attendance", False)
+        st.session_state.event_data['event_classification'] = 'external'
+        st.session_state.conversation_step = 'external_ticketing'
+        st.session_state.external_clicked = False
+        return True
+    
+    # Internal event button
+    if st.session_state.get('calc_internal_clicked'):
+        add_to_chat("Yes, let's calculate the estimated fees", False)
+        st.session_state.conversation_step = 'collect_event_details'
+        st.session_state.calc_internal_clicked = False
+        return True
+    
+    # Ticketing buttons
+    if st.session_state.get('paid_clicked'):
+        add_to_chat("Paid Event - Admission fees/ticket sales", False)
+        st.session_state.event_data['ticketing_type'] = 'paid'
+        st.session_state.conversation_step = 'collect_event_details'
+        st.session_state.paid_clicked = False
+        return True
+    
+    if st.session_state.get('free_reg_clicked'):
+        add_to_chat("Free with Registration - Controlled access", False)
+        st.session_state.event_data['ticketing_type'] = 'free_registered'
+        st.session_state.conversation_step = 'collect_event_details'
+        st.session_state.free_reg_clicked = False
+        return True
+    
+    if st.session_state.get('free_open_clicked'):
+        add_to_chat("Free Open Access - No registration required", False)
+        st.session_state.event_data['ticketing_type'] = 'free_open'
+        st.session_state.conversation_step = 'collect_event_details'
+        st.session_state.free_open_clicked = False
+        return True
+    
+    # Results buttons
+    if st.session_state.get('save_app_clicked'):
+        application_id = save_to_mongodb(st.session_state.event_data)
+        if application_id:
+            add_to_chat("✅ Application saved successfully! Reference ID: " + str(application_id)[:8], True)
+        else:
+            add_to_chat("❌ Failed to save application. Please try again.", True)
+        st.session_state.save_app_clicked = False
+        return True
+    
+    if st.session_state.get('new_calc_clicked'):
+        st.session_state.conversation_step = 'greeting'
+        st.session_state.event_data = {}
+        st.session_state.show_greeting = True
+        add_to_chat("Let's calculate fees for another event!", False)
+        st.session_state.new_calc_clicked = False
+        return True
+    
+    if st.session_state.get('summary_clicked'):
+        estimated_fee = calculate_estimated_fees(st.session_state.event_data)
+        base_fee = 2000 if st.session_state.event_data['event_classification'] == 'internal' else 3000
+        participant_fee = (st.session_state.event_data['no_of_participants'] // 100) * 500
+        duration_fee = max(0, (st.session_state.event_data['no_of_days'] - 3) * 500)
+        performer_fee = st.session_state.event_data['no_of_performers'] * 200
+        
+        breakdown = f"""
+        **DETAILED FEE BREAKDOWN**
+        
+        Base Fee: AED {base_fee:,}
+        Participant Fee: AED {participant_fee:,}
+        Duration Fee: AED {duration_fee:,}
+        Performer Fee: AED {performer_fee:,}
+        
+        **Total: AED {estimated_fee:,}**
+        """
+        add_to_chat(breakdown, True)
+        st.session_state.summary_clicked = False
+        return True
+    
+    return False
+
 def main():
     st.set_page_config(
         page_title="Dubai Event Permit Assistant",
@@ -150,35 +330,23 @@ def main():
     # Custom CSS for better styling
     st.markdown("""
     <style>
-    .main-header {
-        background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
-        padding: 2rem;
-        border-radius: 10px;
-        margin-bottom: 2rem;
-        text-align: center;
-        color: white;
-    }
-    .chat-container {
-        max-height: 600px;
-        overflow-y: auto;
-        padding: 1rem;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        margin-bottom: 1rem;
-    }
-    .option-button {
-        margin: 0.5rem;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        border: 2px solid #3b82f6;
-        background: white;
-        color: #3b82f6;
-        cursor: pointer;
-    }
-    .option-button:hover {
-        background: #3b82f6;
-        color: white;
-    }
+        .stButton>button {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        .stChatMessage {
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+        }
+        .stTextInput>div>div>input, .stTextArea>div>div>textarea {
+            border-radius: 8px;
+        }
+        .stSelectbox>div>div>div {
+            border-radius: 8px;
+        }
     </style>
     """, unsafe_allow_html=True)
     
@@ -187,9 +355,9 @@ def main():
     
     # Header
     st.markdown("""
-    <div class="main-header">
-        <h1>🎪 Dubai Event Permit Business Support Assistant</h1>
-        <p>Your AI-powered guide for Dubai event permits and fee calculations</p>
+    <div style="text-align: center; padding: 2rem 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; margin-bottom: 2rem;">
+        <h1 style="color: white; margin: 0; font-size: 2.5rem;">🎪 Dubai Event Permit Business Support Assistant</h1>
+        <p style="color: white; margin: 0.5rem 0 0 0; font-size: 1.2rem;">Your AI-powered guide for Dubai event permits and fee calculations</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -201,152 +369,118 @@ def main():
     with chat_container:
         display_chat_history()
     
+    # Show initial greeting message when app loads
+    if st.session_state.show_greeting and len(st.session_state.chat_history) == 0:
+        greeting_message = """
+        Hello! 👋 Welcome to Dubai Event Permit Business Support Assistant.
+        I'm here to help you with:
+        
+        ✅ Event permit applications in Dubai
+
+        ✅ **Government fee calculations and estimates**
+
+        ✅ Document requirements and checklists  
+
+        ✅ Application timeline planning
+
+        ✅ Regulatory compliance guidance
+        
+        Let's get your event permit sorted efficiently! How can I assist you today?
+        """
+        add_to_chat(greeting_message)
+        st.session_state.show_greeting = False
+        st.rerun()
+    
+    # Handle button clicks
+    if handle_button_clicks():
+        st.rerun()
+    
     # Conversation flow
     if st.session_state.conversation_step == 'greeting':
-        if not st.session_state.chat_history:
-            greeting_message = """
-            Hello! 👋 Welcome to Dubai Event Permit Business Support Assistant.
-
-            I'm here to help you with:
-            ✅ Event permit applications in Dubai
-            ✅ **Government fee calculations and estimates**
-            ✅ Document requirements and checklists  
-            ✅ Application timeline planning
-            ✅ Regulatory compliance guidance
-
-            Let's get your event permit sorted efficiently! How can I assist you today?
-            """
-            add_to_chat(greeting_message)
-        
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            if st.button("🎯 Start Fee Calculator", key="fee_calc"):
-                add_to_chat("I'd like to calculate government fees for my event", False)
-                st.session_state.conversation_step = 'event_classification'
-                st.rerun()
+            st.button("🎯 Start Fee Calculator", key="fee_calc", on_click=lambda: setattr(st.session_state, 'fee_calc_clicked', True))
         
         with col2:
-            if st.button("📋 Check Requirements", key="requirements"):
-                add_to_chat("I want to check document requirements", False)
-                add_to_chat("This feature is coming soon! For now, let me help you with fee calculations.", True)
+            st.button("📋 Check Requirements", key="requirements", on_click=lambda: setattr(st.session_state, 'requirements_clicked', True))
         
         with col3:
-            if st.button("📞 Speak with Specialist", key="specialist"):
-                add_to_chat("I'd like to speak with a permit specialist", False)
-                add_to_chat("Our specialists will be available soon! Let me help you calculate fees in the meantime.", True)
+            st.button("📞 Speak with Specialist", key="specialist", on_click=lambda: setattr(st.session_state, 'specialist_clicked', True))
         
         with col4:
-            if st.button("❓ General Questions", key="general"):
-                add_to_chat("I have general permit questions", False)
-                add_to_chat("I'm here to help! Let's start with calculating your event fees - this will give you a good foundation for understanding the permit process.", True)
+            st.button("❓ General Questions", key="general", on_click=lambda: setattr(st.session_state, 'general_clicked', True))
     
     elif st.session_state.conversation_step == 'event_classification':
-        if 'classification_asked' not in st.session_state:
-            classification_message = """
-            Perfect! I'll guide you through the government fee calculation process.
+        classification_message = """
+        Perfect! I'll guide you through the government fee calculation process.
 
-            **Step 1: Event Classification**
+        **Step 1: Event Classification**
 
-            Is your event:
-            🏢 **INTERNAL** - Company/organizational event for employees only
-            🌍 **EXTERNAL** - Event with external guests, clients, or public attendance
+        Is your event:
 
-            This determines your permit category and fee structure.
-            """
-            add_to_chat(classification_message)
-            st.session_state.classification_asked = True
+        🏢 **INTERNAL** - Company/organizational event for employees only
+
+        🌍 **EXTERNAL** - Event with external guests, clients, or public attendance
+
+        This determines your permit category and fee structure.
+        """
+        add_to_chat(classification_message)
         
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("🏢 Internal Event", key="internal"):
-                add_to_chat("Internal Event - Company/organizational event for employees only", False)
-                st.session_state.event_data['event_classification'] = 'internal'
-                st.session_state.conversation_step = 'internal_event_info'
-                st.rerun()
+            st.button("🏢 Internal Event", key="internal", on_click=lambda: setattr(st.session_state, 'internal_clicked', True))
         
         with col2:
-            if st.button("🌍 External Event", key="external"):
-                add_to_chat("External Event - Event with external guests, clients, or public attendance", False)
-                st.session_state.event_data['event_classification'] = 'external'
-                st.session_state.conversation_step = 'external_ticketing'
-                st.rerun()
+            st.button("🌍 External Event", key="external", on_click=lambda: setattr(st.session_state, 'external_clicked', True))
     
     elif st.session_state.conversation_step == 'internal_event_info':
-        if 'internal_info_shown' not in st.session_state:
-            internal_message = """
-            **INTERNAL EVENT IDENTIFIED** 🏢
-
-            Good news! For internal company events:
-            - Your venue handles the permit application
-            - Simplified documentation required
-            - Lower government fees typically apply
-            - Faster processing times
-
-            **What I can help you with:**
-            - Calculate estimated fees for budgeting
-            - Prepare information for your venue
-            - Ensure compliance requirements are met
-
-            Let's proceed with fee calculation! I'll need some basic event details.
-            """
-            add_to_chat(internal_message)
-            st.session_state.internal_info_shown = True
+        internal_message = """
+        **INTERNAL EVENT IDENTIFIED** 🏢
+        Good news! For internal company events:
+        - Your venue handles the permit application
+        - Simplified documentation required
+        - Lower government fees typically apply
+        - Faster processing times
+        **What I can help you with:**
+        - Calculate estimated fees for budgeting
+        - Prepare information for your venue
+        - Ensure compliance requirements are met
+        Let's proceed with fee calculation! I'll need some basic event details.
+        """
+        add_to_chat(internal_message)
         
-        if st.button("📊 Calculate Fees for Internal Event", key="calc_internal"):
-            add_to_chat("Yes, let's calculate the estimated fees", False)
-            st.session_state.conversation_step = 'collect_event_details'
-            st.rerun()
+        st.button("📊 Calculate Fees for Internal Event", key="calc_internal", on_click=lambda: setattr(st.session_state, 'calc_internal_clicked', True))
     
     elif st.session_state.conversation_step == 'external_ticketing':
-        if 'ticketing_asked' not in st.session_state:
-            ticketing_message = """
-            **EXTERNAL EVENT IDENTIFIED** 🌍
-
-            For external events, I need to understand your ticketing structure:
-
-            💰 **PAID EVENT** - Admission fees, ticket sales, revenue generation
-            🎫 **FREE with Registration** - No charge but controlled access with registration/badges  
-            🆓 **FREE Open Access** - No charge, no registration, open to public
-
-            This classification significantly impacts your permits and fees.
-            """
-            add_to_chat(ticketing_message)
-            st.session_state.ticketing_asked = True
+        ticketing_message = """
+        **EXTERNAL EVENT IDENTIFIED** 🌍
+        For external events, I need to understand your ticketing structure:
+        💰 **PAID TICKETED** - Admission fees, ticket sales, revenue generation
+        🎫 **FREE TICKETED** - No charge but controlled access with registration/badges  
+        🆓 **NON-TICKETED** - No charge, no registration, open to public
+        This classification significantly impacts your permits and fees.
+        """
+        add_to_chat(ticketing_message)
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("💰 Paid Event", key="paid"):
-                add_to_chat("Paid Event - Admission fees/ticket sales", False)
-                st.session_state.event_data['ticketing_type'] = 'paid'
-                st.session_state.conversation_step = 'collect_event_details'
-                st.rerun()
+            st.button("💰 Paid Event", key="paid", on_click=lambda: setattr(st.session_state, 'paid_clicked', True))
         
         with col2:
-            if st.button("🎫 Free with Registration", key="free_reg"):
-                add_to_chat("Free with Registration - Controlled access", False)
-                st.session_state.event_data['ticketing_type'] = 'free_registered'
-                st.session_state.conversation_step = 'collect_event_details'
-                st.rerun()
+            st.button("🎫 Free with Registration", key="free_reg", on_click=lambda: setattr(st.session_state, 'free_reg_clicked', True))
         
         with col3:
-            if st.button("🆓 Free Open Access", key="free_open"):
-                add_to_chat("Free Open Access - No registration required", False)
-                st.session_state.event_data['ticketing_type'] = 'free_open'
-                st.session_state.conversation_step = 'collect_event_details'
-                st.rerun()
+            st.button("🆓 Free Open Access", key="free_open", on_click=lambda: setattr(st.session_state, 'free_open_clicked', True))
     
     elif st.session_state.conversation_step == 'collect_event_details':
-        if 'details_form_shown' not in st.session_state:
-            details_message = """
-            **EVENT DETAILS COLLECTION** 📝
-
-            Now I need specific information to calculate accurate government fees. Please fill out the form below:
-            """
-            add_to_chat(details_message)
-            st.session_state.details_form_shown = True
+        details_message = """
+        **EVENT DETAILS COLLECTION** 📝
+        Now I need specific information to calculate accurate government fees. Please fill out the form below:
+        """
+        add_to_chat(details_message)
         
         # Event details form
         with st.form("event_details_form"):
@@ -408,17 +542,13 @@ def main():
         # Display results
         results_message = f"""
         **🎉 FEE CALCULATION COMPLETE**
-
         **Event:** {st.session_state.event_data['event_name']}
         **Classification:** {st.session_state.event_data['event_classification'].title()}
         **Participants:** {st.session_state.event_data['no_of_participants']}
         **Duration:** {st.session_state.event_data['no_of_days']} days
         **Venue:** {st.session_state.event_data['venue']}
-
         **💰 ESTIMATED GOVERNMENT FEES: AED {estimated_fee:,}**
-
         *Note: This is an estimated calculation. Final fees may vary based on additional requirements and current government rates.*
-
         Would you like me to save this information for future reference?
         """
         add_to_chat(results_message)
@@ -426,34 +556,13 @@ def main():
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("💾 Save Application", key="save_app"):
-                application_id = save_to_mongodb(st.session_state.event_data)
-                if application_id:
-                    add_to_chat("✅ Application saved successfully! Reference ID: " + str(application_id)[:8], True)
-                else:
-                    add_to_chat("❌ Failed to save application. Please try again.", True)
+            st.button("💾 Save Application", key="save_app", on_click=lambda: setattr(st.session_state, 'save_app_clicked', True))
         
         with col2:
-            if st.button("🔄 Calculate Another Event", key="new_calc"):
-                st.session_state.conversation_step = 'greeting'
-                st.session_state.event_data = {}
-                add_to_chat("Let's calculate fees for another event!", False)
-                st.rerun()
+            st.button("🔄 Calculate Another Event", key="new_calc", on_click=lambda: setattr(st.session_state, 'new_calc_clicked', True))
         
         with col3:
-            if st.button("📋 View Summary", key="summary"):
-                # Show detailed breakdown
-                breakdown = f"""
-                **DETAILED FEE BREAKDOWN**
-                
-                Base Fee: AED {2000 if st.session_state.event_data['event_classification'] == 'internal' else 3000}
-                Participant Fee: AED {(st.session_state.event_data['no_of_participants'] // 100) * 500}
-                Duration Fee: AED {max(0, (st.session_state.event_data['no_of_days'] - 3) * 500)}
-                Performer Fee: AED {st.session_state.event_data['no_of_performers'] * 200}
-                
-                **Total: AED {estimated_fee:,}**
-                """
-                add_to_chat(breakdown, True)
+            st.button("📋 View Summary", key="summary", on_click=lambda: setattr(st.session_state, 'summary_clicked', True))
     
     # Sidebar with current event info
     if st.session_state.event_data:
@@ -467,6 +576,7 @@ def main():
                 st.session_state.event_data = {}
                 st.session_state.conversation_step = 'greeting'
                 st.session_state.chat_history = []
+                st.session_state.show_greeting = True
                 st.rerun()
 
 if __name__ == "__main__":
