@@ -101,9 +101,9 @@ def calculate_estimated_fees(event_data):
     if event_data.get('event_classification') == 'internal':
         base_fee = 2000  # AED
     elif event_data.get('event_classification') == 'external':
-        if event_data.get('ticketing_type') == 'paid':
+        if event_data.get('ticketing_type') == 'paid_ticketed':
             base_fee = 8000
-        elif event_data.get('ticketing_type') == 'free_registered':
+        elif event_data.get('ticketing_type') == 'free_ticketed':
             base_fee = 5000
         else:
             base_fee = 3000
@@ -149,6 +149,18 @@ def handle_button_clicks():
     # Greeting buttons
     if st.session_state.get('fee_calc_clicked'):
         add_to_chat("I'd like to calculate government fees for my event", False)
+        classification_message = """
+        Perfect! I'll guide you through the government fee calculation process.\n
+        **Step 1: Event Classification**
+
+        Is your event:\n
+
+        🏢 **INTERNAL** - Company/organizational event for employees only \n
+        🌍 **EXTERNAL** - Event with external guests, clients, or public attendance \n
+
+        This determines your permit category and fee structure.
+        """
+        add_to_chat(classification_message)
         st.session_state.conversation_step = 'event_classification'
         st.session_state.show_greeting = False
         st.session_state.fee_calc_clicked = False
@@ -161,23 +173,23 @@ def handle_button_clicks():
         
         For Dubai event permits, you'll typically need:
         
-        **For All Events:**
-        ✅ Completed application form
-        ✅ Company trade license copy
-        ✅ Event concept/description
-        ✅ Venue booking confirmation
-        ✅ Event layout/floor plan
+        **For All Events:**\n
+        ✅ Completed application form \n
+        ✅ Company trade license copy \n
+        ✅ Event concept/description  \n
+        ✅ Venue booking confirmation \n
+        ✅ Event layout/floor plan    \n
         
-        **For External Events:**
-        ✅ Marketing materials/brochures
-        ✅ Speaker/performer details
-        ✅ Security plan (for large events)
-        ✅ Insurance certificate
+        **For External Events:**\n
+        ✅ Marketing materials/brochures \n
+        ✅ Speaker/performer details \n
+        ✅ Security plan (for large events) \n
+        ✅ Insurance certificate \n
         
-        **For Paid Events:**
-        ✅ Ticketing system details
-        ✅ Revenue projections
-        ✅ Payment processing setup
+        **For Paid Events:**\n
+        ✅ Ticketing system details   \n
+        ✅ Revenue projections        \n
+        ✅ Payment processing setup   \n
         
         Would you like me to help calculate your fees as well?
         """
@@ -198,9 +210,9 @@ def handle_button_clicks():
         - Compliance reviews
         
         **Contact Information:**
-        📧 Email: permits@dubaievents.gov.ae
-        📱 Phone: +971-4-XXX-XXXX
-        🕐 Hours: Sunday-Thursday, 8:00 AM - 3:00 PM
+        📧 Email: permits@dubaievents.gov.ae \n
+        📱 Phone: +971-4-XXX-XXXX \n
+        🕐 Hours: Sunday-Thursday, 8:00 AM - 3:00 PM \n
         
         In the meantime, I can help you get started with fee calculations!
         """
@@ -215,19 +227,19 @@ def handle_button_clicks():
         
         **Common Questions:**
         
-        **Q: How long does permit processing take?**
+        **Q: How long does permit processing take?** \n
         A: 5-15 working days depending on event complexity
         
-        **Q: Can I apply for multiple events at once?**
+        **Q: Can I apply for multiple events at once?** \n
         A: Yes, but each event needs a separate application
         
-        **Q: What if my event details change?**
+        **Q: What if my event details change?** \n
         A: You must notify authorities within 48 hours of changes
         
-        **Q: Are there restrictions on event timing?**
+        **Q: Are there restrictions on event timing?**\n
         A: Yes, some venues have restrictions during Ramadan and national holidays
         
-        For more specific questions, please refer to this [Dubai Events FAQ](https://epermits.det.gov.ae/ePermit/FAQDocumentEN.html) or contact our support team.
+        For more specific questions, please refer to this [Dubai Events FAQ](https://epermits.det.gov.ae/ePermit/FAQDocumentEN.html) or contact our support team.\n
 
         Let me help you calculate your specific event fees!
         """
@@ -238,6 +250,20 @@ def handle_button_clicks():
     # Event classification buttons
     if st.session_state.get('internal_clicked'):
         add_to_chat("Internal Event - Company/organizational event for employees only", False)
+        internal_message = """
+        **INTERNAL EVENT IDENTIFIED** 🏢
+        Good news! For internal company events:
+        - Your venue handles the permit application
+        - Simplified documentation required
+        - Lower government fees typically apply
+        - Faster processing times
+        **What I can help you with:**
+        - Calculate estimated fees for budgeting
+        - Prepare information for your venue
+        - Ensure compliance requirements are met
+        Let's proceed with fee calculation! I'll need some basic event details.
+        """
+        add_to_chat(internal_message)
         st.session_state.event_data['event_classification'] = 'internal'
         st.session_state.conversation_step = 'internal_event_info'
         st.session_state.internal_clicked = False
@@ -245,6 +271,15 @@ def handle_button_clicks():
     
     if st.session_state.get('external_clicked'):
         add_to_chat("External Event - Event with external guests, clients, or public attendance", False)
+        ticketing_message = """
+        **EXTERNAL EVENT IDENTIFIED** 🌍
+        For external events, I need to understand your ticketing structure: \n
+        💰 **PAID TICKETED** - Admission fees, ticket sales, revenue generation \n
+        🎫 **FREE TICKETED** - No charge but controlled access with registration/badges  \n
+        🆓 **NON-TICKETED** - No charge, no registration, open to public \n
+        This classification significantly impacts your permits and fees.
+        """
+        add_to_chat(ticketing_message)
         st.session_state.event_data['event_classification'] = 'external'
         st.session_state.conversation_step = 'external_ticketing'
         st.session_state.external_clicked = False
@@ -257,26 +292,26 @@ def handle_button_clicks():
         st.session_state.calc_internal_clicked = False
         return True
     
-    # Ticketing buttons
-    if st.session_state.get('paid_clicked'):
-        add_to_chat("Paid Event - Admission fees/ticket sales", False)
-        st.session_state.event_data['ticketing_type'] = 'paid'
+    # Ticketing buttons - Updated to new terminology
+    if st.session_state.get('paid_ticketed_clicked'):
+        add_to_chat("Paid Ticketed - Admission fees/ticket sales", False)
+        st.session_state.event_data['ticketing_type'] = 'paid_ticketed'
         st.session_state.conversation_step = 'collect_event_details'
-        st.session_state.paid_clicked = False
+        st.session_state.paid_ticketed_clicked = False
         return True
     
-    if st.session_state.get('free_reg_clicked'):
-        add_to_chat("Free with Registration - Controlled access", False)
-        st.session_state.event_data['ticketing_type'] = 'free_registered'
+    if st.session_state.get('free_ticketed_clicked'):
+        add_to_chat("Free Ticketed - Controlled access with registration", False)
+        st.session_state.event_data['ticketing_type'] = 'free_ticketed'
         st.session_state.conversation_step = 'collect_event_details'
-        st.session_state.free_reg_clicked = False
+        st.session_state.free_ticketed_clicked = False
         return True
     
-    if st.session_state.get('free_open_clicked'):
-        add_to_chat("Free Open Access - No registration required", False)
-        st.session_state.event_data['ticketing_type'] = 'free_open'
+    if st.session_state.get('non_ticketed_clicked'):
+        add_to_chat("Non-Ticketed - Open access with no registration", False)
+        st.session_state.event_data['ticketing_type'] = 'non_ticketed'
         st.session_state.conversation_step = 'collect_event_details'
-        st.session_state.free_open_clicked = False
+        st.session_state.non_ticketed_clicked = False
         return True
     
     # Results buttons
@@ -305,12 +340,12 @@ def handle_button_clicks():
         performer_fee = st.session_state.event_data['no_of_performers'] * 200
         
         breakdown = f"""
-        **DETAILED FEE BREAKDOWN**
+        **DETAILED FEE BREAKDOWN** \n
         
-        Base Fee: AED {base_fee:,}
-        Participant Fee: AED {participant_fee:,}
-        Duration Fee: AED {duration_fee:,}
-        Performer Fee: AED {performer_fee:,}
+        Base Fee: AED {base_fee:,} \n
+        Participant Fee: AED {participant_fee:,} \n
+        Duration Fee: AED {duration_fee:,} \n
+        Performer Fee: AED {performer_fee:,} \n
         
         **Total: AED {estimated_fee:,}**
         """
@@ -375,15 +410,11 @@ def main():
         Hello! 👋 Welcome to Dubai Event Permit Business Support Assistant.
         I'm here to help you with:
         
-        ✅ Event permit applications in Dubai
-
-        ✅ **Government fee calculations and estimates**
-
-        ✅ Document requirements and checklists  
-
-        ✅ Application timeline planning
-
-        ✅ Regulatory compliance guidance
+        ✅ Event permit applications in Dubai \n
+        ✅ **Government fee calculations and estimates** \n
+        ✅ Document requirements and checklists \n 
+        ✅ Application timeline planning \n
+        ✅ Regulatory compliance guidance \n
         
         Let's get your event permit sorted efficiently! How can I assist you today?
         """
@@ -412,21 +443,6 @@ def main():
             st.button("❓ General Questions", key="general", on_click=lambda: setattr(st.session_state, 'general_clicked', True))
     
     elif st.session_state.conversation_step == 'event_classification':
-        classification_message = """
-        Perfect! I'll guide you through the government fee calculation process.
-
-        **Step 1: Event Classification**
-
-        Is your event:
-
-        🏢 **INTERNAL** - Company/organizational event for employees only
-
-        🌍 **EXTERNAL** - Event with external guests, clients, or public attendance
-
-        This determines your permit category and fee structure.
-        """
-        add_to_chat(classification_message)
-        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -436,52 +452,21 @@ def main():
             st.button("🌍 External Event", key="external", on_click=lambda: setattr(st.session_state, 'external_clicked', True))
     
     elif st.session_state.conversation_step == 'internal_event_info':
-        internal_message = """
-        **INTERNAL EVENT IDENTIFIED** 🏢
-        Good news! For internal company events:
-        - Your venue handles the permit application
-        - Simplified documentation required
-        - Lower government fees typically apply
-        - Faster processing times
-        **What I can help you with:**
-        - Calculate estimated fees for budgeting
-        - Prepare information for your venue
-        - Ensure compliance requirements are met
-        Let's proceed with fee calculation! I'll need some basic event details.
-        """
-        add_to_chat(internal_message)
-        
         st.button("📊 Calculate Fees for Internal Event", key="calc_internal", on_click=lambda: setattr(st.session_state, 'calc_internal_clicked', True))
     
     elif st.session_state.conversation_step == 'external_ticketing':
-        ticketing_message = """
-        **EXTERNAL EVENT IDENTIFIED** 🌍
-        For external events, I need to understand your ticketing structure:
-        💰 **PAID TICKETED** - Admission fees, ticket sales, revenue generation
-        🎫 **FREE TICKETED** - No charge but controlled access with registration/badges  
-        🆓 **NON-TICKETED** - No charge, no registration, open to public
-        This classification significantly impacts your permits and fees.
-        """
-        add_to_chat(ticketing_message)
-        
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.button("💰 Paid Event", key="paid", on_click=lambda: setattr(st.session_state, 'paid_clicked', True))
+            st.button("💰 Paid Ticketed", key="paid_ticketed", on_click=lambda: setattr(st.session_state, 'paid_ticketed_clicked', True))
         
         with col2:
-            st.button("🎫 Free with Registration", key="free_reg", on_click=lambda: setattr(st.session_state, 'free_reg_clicked', True))
+            st.button("🎫 Free Ticketed", key="free_ticketed", on_click=lambda: setattr(st.session_state, 'free_ticketed_clicked', True))
         
         with col3:
-            st.button("🆓 Free Open Access", key="free_open", on_click=lambda: setattr(st.session_state, 'free_open_clicked', True))
+            st.button("🆓 Non-Ticketed", key="non_ticketed", on_click=lambda: setattr(st.session_state, 'non_ticketed_clicked', True))
     
     elif st.session_state.conversation_step == 'collect_event_details':
-        details_message = """
-        **EVENT DETAILS COLLECTION** 📝
-        Now I need specific information to calculate accurate government fees. Please fill out the form below:
-        """
-        add_to_chat(details_message)
-        
         # Event details form
         with st.form("event_details_form"):
             st.subheader("📋 Event Information Form")
@@ -492,7 +477,7 @@ def main():
                 event_name = st.text_input("Event Name*", placeholder="Enter your event name")
                 
                 # Event types based on classification
-                if st.session_state.event_data.get('ticketing_type') in ['paid', 'free_registered']:
+                if st.session_state.event_data.get('ticketing_type') in ['paid_ticketed', 'free_ticketed']:
                     event_types = st.multiselect("Event Type*", TICKETED_EVENT_TYPES)
                 else:
                     event_types = st.multiselect("Event Type*", NON_TICKETED_EVENT_TYPES)
@@ -536,23 +521,6 @@ def main():
                     st.rerun()
     
     elif st.session_state.conversation_step == 'show_results':
-        # Calculate fees
-        estimated_fee = calculate_estimated_fees(st.session_state.event_data)
-        
-        # Display results
-        results_message = f"""
-        **🎉 FEE CALCULATION COMPLETE**
-        **Event:** {st.session_state.event_data['event_name']}
-        **Classification:** {st.session_state.event_data['event_classification'].title()}
-        **Participants:** {st.session_state.event_data['no_of_participants']}
-        **Duration:** {st.session_state.event_data['no_of_days']} days
-        **Venue:** {st.session_state.event_data['venue']}
-        **💰 ESTIMATED GOVERNMENT FEES: AED {estimated_fee:,}**
-        *Note: This is an estimated calculation. Final fees may vary based on additional requirements and current government rates.*
-        Would you like me to save this information for future reference?
-        """
-        add_to_chat(results_message)
-        
         col1, col2, col3 = st.columns(3)
         
         with col1:
