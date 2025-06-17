@@ -1,5 +1,6 @@
 import streamlit as st
 import pymongo
+from pymongo import MongoClient
 from datetime import datetime, date
 import json
 import logging
@@ -104,7 +105,7 @@ def init_connection():
         logger.info("Initializing MongoDB connection")
         
         # Get connection string from environment or use default
-        connection_string = os.getenv('MONGODB_URI', "mongodb://localhost:27017/")
+        connection_string = os.getenv('MONGODB_URI', "mongodb+srv://raviyadav68358:ISZAzApleXqr9kWXx@cluster0.us3p0ne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
         logger.debug(f"Using connection string: {connection_string[:20]}...")
         
         # Create client with timeout settings
@@ -120,8 +121,8 @@ def init_connection():
         logger.info("MongoDB connection successful")
         
         # Return collection
-        db = client["dubai_events"]
-        collection = db["event_applications"]
+        db = client["Chatbot"]
+        collection = db["event_data"]
         
         # Log collection info
         logger.info(f"Connected to database: {db.name}")
