@@ -144,6 +144,71 @@ def calculate_event_permit_cost(
     return breakdown
 
 
+def map_event_data_to_calculator_params(event_data):
+    """
+    Map event data from the app to calculator parameters.
+    
+    Parameters:
+    - event_data: dict - Event data collected from the app
+    
+    Returns:
+    - dict: Parameters for the calculate_event_permit_cost function
+    """
+    
+    # Extract event types
+    event_types = event_data.get('event_types', [])
+    if isinstance(event_types, str):
+        event_types = [event_types]
+    
+    # Determine main event type based on collected data
+    event_type = 'business'  # Default
+    
+    # Check for entertainment events
+    entertainment_keywords = ['DJ Event', 'Musical Event', 'Comedy Show']
+    if any(keyword in event_types for keyword in entertainment_keywords):
+        event_type = 'entertainment'
+    
+    # Check for sports/charity events (add logic if needed)
+    sports_charity_keywords = ['Sports', 'Charity', 'Marathon', 'Tournament']
+    if any(keyword in str(event_types).lower() for keyword in ['sports', 'charity', 'marathon', 'tournament']):
+        event_type = 'sports_charity'
+    
+    # Determine if ticketed
+    ticketing_type = event_data.get('ticketing_type', 'non_ticketed')
+    is_ticketed = ticketing_type in ['paid_ticketed', 'free_ticketed']
+    
+    # Map venue type
+    venue = event_data.get('venue', '')
+    venue_type = 'hotel' if 'hotel' in venue.lower() else 'other'
+    
+    # Check for specific event components
+    has_exhibition = any('exhibition' in event_type.lower() for event_type in event_types)
+    has_conference = any(keyword in event_type.lower() for event_type in event_types 
+                        for keyword in ['conference', 'forum', 'seminar', 'summit', 'meeting'])
+    has_award_ceremony = any('award' in event_type.lower() for event_type in event_types)
+    
+    # Get other parameters
+    num_days = event_data.get('no_of_days', 1)
+    num_performers = event_data.get('no_of_performers', 0)
+    
+    # These would need to be collected in the app if needed
+    is_urgent = event_data.get('is_urgent', False)
+    is_amendment = event_data.get('is_amendment', False)
+    
+    return {
+        'event_type': event_type,
+        'is_ticketed': is_ticketed,
+        'venue_type': venue_type,
+        'num_days': num_days,
+        'num_performers': num_performers,
+        'is_urgent': is_urgent,
+        'is_amendment': is_amendment,
+        'has_exhibition': has_exhibition,
+        'has_conference': has_conference,
+        'has_award_ceremony': has_award_ceremony
+    }
+
+
 # Example usage:
 if __name__ == "__main__":
     # Example 1: Ticketed business event with conference and exhibition
@@ -179,3 +244,20 @@ if __name__ == "__main__":
     print("\nExample 3 - Award Ceremony + Conference at Other Venue (Non-ticketed):")
     print(f"Total Cost: {example3['total_cost']} AED")
     print("Breakdown:", example3['cost_breakdown'])
+    
+    # Test the mapping function
+    print("\n--- Testing Mapping Function ---")
+    sample_event_data = {
+        'event_name': 'Tech Conference 2024',
+        'event_types': ['Conference', 'Exhibition'],
+        'venue': 'Dubai Hotel 1',
+        'ticketing_type': 'paid_ticketed',
+        'no_of_days': 3,
+        'no_of_performers': 0
+    }
+    
+    mapped_params = map_event_data_to_calculator_params(sample_event_data)
+    print("Mapped parameters:", mapped_params)
+    
+    result = calculate_event_permit_cost(**mapped_params)
+    print(f"Calculated cost: {result['total_cost']} AED")

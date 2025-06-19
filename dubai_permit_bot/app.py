@@ -105,7 +105,14 @@ def init_connection():
         logger.info("Initializing MongoDB connection")
         
         # Get connection string from environment or use default
-        connection_string = os.getenv('MONGODB_URI', "mongodb+srv://raviyadav68358:ISZAzApleXqr9kWXx@cluster0.us3p0ne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+        connection_string = os.getenv('MONGODB_URI', "mongodb+srv://raviyadav68358:ISZAzApLKXr9kWXx@cluster0.us3p0ne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+        ##Be sure to temper the actual connection string while pusing the code in repository
+        if not connection_string:
+            logger.error("MongoDB connection string is not set")
+            st.error("Database connection string is not configured. Please check your environment variables.")
+            return None
+
+
         logger.debug(f"Using connection string: {connection_string[:20]}...")
         
         # Create client with timeout settings
@@ -263,9 +270,196 @@ def display_chat_history():
 
 # ========================= CALCULATION FUNCTIONS =========================
 
+def calculate_event_permit_cost(
+    event_type,
+    is_ticketed,
+    venue_type=None,
+    num_days=1,
+    num_performers=0,
+    is_urgent=False,
+    is_amendment=False,
+    has_exhibition=False,
+    has_conference=False,
+    has_award_ceremony=False
+):
+    """
+    Calculate the total permit cost for an event based on various parameters.
+    """
+    # Initialize cost components
+    cost_components = {
+        'base_fee': 0,
+        'per_day_fee': 0,
+        'performer_fee': 0,
+        'e_permit_fee': 200,
+        'knowledge_dirham': 10,
+        'innovation_dirham': 10,
+        'dtcm_management_fee': 500 if event_type == 'entertainment' else 0,
+        'ded_fee': 50 if event_type == 'business' else 0,
+        'urgent_fee': 500 if is_urgent else 0,
+        'amendment_fee': 800 if is_amendment else 520 if (not is_ticketed and is_amendment) else 0
+    }
+    
+    # Calculate base fee based on event type and ticketing status
+    if event_type == 'business':
+        if is_ticketed:
+            if has_exhibition and has_conference:
+                cost_components['base_fee'] = 1500
+            elif has_exhibition:
+                cost_components['base_fee'] = 1000
+            elif has_conference:
+                cost_components['base_fee'] = 1000
+            else:
+                cost_components['base_fee'] = 1000  # Default for ticketed business events
+        else:  # Non-ticketed
+            if has_exhibition and has_conference:
+                cost_components['base_fee'] = 1500
+            elif has_exhibition:
+                cost_components['base_fee'] = 1000
+            elif has_conference:
+                cost_components['base_fee'] = 250
+            else:
+                cost_components['base_fee'] = 1000  # Default for non-ticketed business events
+    
+    elif event_type == 'entertainment':
+        if is_ticketed:
+            cost_components['base_fee'] = 800  # Event permit fee for ticketed
+        else:  # Non-ticketed
+            if venue_type == 'hotel':
+                cost_components['base_fee'] = 800  # Per day
+            else:
+                cost_components['base_fee'] = 500  # Per day for other venues
+            
+            # Performer fees only apply to non-ticketed entertainment events
+            if venue_type == 'hotel':
+                cost_components['performer_fee'] = 750 * num_performers
+            else:
+                cost_components['performer_fee'] = 350 * num_performers
+    
+    elif event_type == 'sports_charity':
+        cost_components['base_fee'] = 0  # No base fee, only additional fees apply
+    
+    # Calculate per day fee
+    if event_type == 'entertainment' and not is_ticketed:
+        if venue_type == 'hotel':
+            cost_components['per_day_fee'] = 800 * num_days
+        else:
+            cost_components['per_day_fee'] = 500 * num_days
+    else:
+        # For ticketed entertainment and other event types, first day included in base fee
+        cost_components['per_day_fee'] = 800 * (num_days - 1) if num_days > 1 else 0
+    
+    # Special cases for combined events
+    if has_award_ceremony:
+        if event_type == 'business':
+            if is_ticketed:
+                if has_conference and has_exhibition:
+                    cost_components['base_fee'] = 3070 - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
+                elif has_conference:
+                    cost_components['base_fee'] = 2570 - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
+                else:
+                    cost_components['base_fee'] = 1520 - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
+            else:  # Non-ticketed
+                if venue_type == 'hotel':
+                    if has_conference and has_exhibition:
+                        cost_components['base_fee'] = 3820 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
+                    elif has_conference:
+                        cost_components['base_fee'] = 2790 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
+                    else:
+                        cost_components['base_fee'] = 2270 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
+                else:  # Other venue
+                    if has_conference and has_exhibition:
+                        cost_components['base_fee'] = 2090  # This needs verification as the spreadsheet shows '?'
+                    elif has_conference:
+                        cost_components['base_fee'] = 2090 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
+                    else:
+                        cost_components['base_fee'] = 1570 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
+    
+    # Calculate total cost
+    total_cost = sum(cost_components.values())
+    
+    # Prepare breakdown
+    breakdown = {
+        'total_cost': total_cost,
+        'cost_breakdown': cost_components,
+        'calculation_notes': []
+    }
+    
+    # Add calculation notes
+    if num_days > 1 and (event_type != 'entertainment' or is_ticketed):
+        breakdown['calculation_notes'].append(f"Added {cost_components['per_day_fee']} AED for {num_days-1} additional day(s)")
+    
+    if num_performers > 0 and event_type == 'entertainment' and not is_ticketed:
+        breakdown['calculation_notes'].append(f"Added {cost_components['performer_fee']} AED for {num_performers} performer(s) at {venue_type} venue")
+    
+    if is_urgent:
+        breakdown['calculation_notes'].append("Added 500 AED urgent processing fee")
+    
+    if is_amendment:
+        breakdown['calculation_notes'].append(f"Added {cost_components['amendment_fee']} AED amendment fee")
+    
+    return breakdown
+
+
+def map_event_data_to_calculator_params(event_data):
+    """
+    Map event data from the app to calculator parameters.
+    """
+    # Extract event types
+    event_types = event_data.get('event_types', [])
+    if isinstance(event_types, str):
+        event_types = [event_types]
+    
+    # Determine main event type based on collected data
+    event_type = 'business'  # Default
+    
+    # Check for entertainment events
+    entertainment_keywords = ['DJ Event', 'Musical Event', 'Comedy Show']
+    if any(keyword in event_types for keyword in entertainment_keywords):
+        event_type = 'entertainment'
+    
+    # Check for sports/charity events (add logic if needed)
+    sports_charity_keywords = ['Sports', 'Charity', 'Marathon', 'Tournament']
+    if any(keyword in str(event_types).lower() for keyword in ['sports', 'charity', 'marathon', 'tournament']):
+        event_type = 'sports_charity'
+    
+    # Determine if ticketed
+    ticketing_type = event_data.get('ticketing_type', 'non_ticketed')
+    is_ticketed = ticketing_type in ['paid_ticketed', 'free_ticketed']
+    
+    # Map venue type
+    venue = event_data.get('venue', '')
+    venue_type = 'hotel' if 'hotel' in venue.lower() else 'other'
+    
+    # Check for specific event components
+    has_exhibition = any('exhibition' in event_type.lower() for event_type in event_types)
+    has_conference = any(keyword in event_type.lower() for event_type in event_types 
+                        for keyword in ['conference', 'forum', 'seminar', 'summit', 'meeting'])
+    has_award_ceremony = any('award' in event_type.lower() for event_type in event_types)
+    
+    # Get other parameters
+    num_days = event_data.get('no_of_days', 1)
+    num_performers = event_data.get('no_of_performers', 0)
+    
+    # These would need to be collected in the app if needed
+    is_urgent = event_data.get('is_urgent', False)
+    is_amendment = event_data.get('is_amendment', False)
+    
+    return {
+        'event_type': event_type,
+        'is_ticketed': is_ticketed,
+        'venue_type': venue_type,
+        'num_days': num_days,
+        'num_performers': num_performers,
+        'is_urgent': is_urgent,
+        'is_amendment': is_amendment,
+        'has_exhibition': has_exhibition,
+        'has_conference': has_conference,
+        'has_award_ceremony': has_award_ceremony
+    }
+
 @handle_exceptions
 def calculate_estimated_fees(event_data: Dict[str, Any]) -> int:
-    """Calculate estimated government fees with enhanced error handling"""
+    """Calculate estimated government fees using the new calculation logic"""
     try:
         logger.debug(f"Calculating fees for event: {event_data.get('event_name', 'Unknown')}")
         
@@ -273,58 +467,16 @@ def calculate_estimated_fees(event_data: Dict[str, Any]) -> int:
         if not isinstance(event_data, dict):
             raise ValueError("Event data must be a dictionary")
         
-        base_fee = 0
+        # Map event data to calculator parameters
+        params = map_event_data_to_calculator_params(event_data)
         
-        # Base fee calculation
-        event_classification = event_data.get('event_classification', '')
-        if event_classification == 'internal':
-            base_fee = 2000
-            logger.debug("Applied internal event base fee: 2000 AED")
-        elif event_classification == 'external':
-            ticketing_type = event_data.get('ticketing_type', '')
-            if ticketing_type == 'paid_ticketed':
-                base_fee = 8000
-                logger.debug("Applied paid ticketed base fee: 8000 AED")
-            elif ticketing_type == 'free_ticketed':
-                base_fee = 5000
-                logger.debug("Applied free ticketed base fee: 5000 AED")
-            else:
-                base_fee = 3000
-                logger.debug("Applied non-ticketed base fee: 3000 AED")
-        else:
-            logger.warning(f"Unknown event classification: {event_classification}")
-            base_fee = 3000  # Default fee
+        # Calculate fees using the new function
+        result = calculate_event_permit_cost(**params)
         
-        # Additional fees based on participants
-        participants = int(event_data.get('no_of_participants', 0))
-        participant_fee = 0
+        logger.info(f"Fee calculation completed: {result['total_cost']} AED")
+        logger.debug(f"Fee breakdown: {result['cost_breakdown']}")
         
-        if participants > 500:
-            participant_fee = 3000
-        elif participants > 200:
-            participant_fee = 1500
-        elif participants > 100:
-            participant_fee = 800
-        
-        logger.debug(f"Participant fee for {participants} participants: {participant_fee} AED")
-        
-        # Duration-based fees
-        days = int(event_data.get('no_of_days', 1))
-        duration_fee = max(0, (days - 3) * 500)
-        logger.debug(f"Duration fee for {days} days: {duration_fee} AED")
-        
-        # Performer fees
-        performers = int(event_data.get('no_of_performers', 0))
-        performer_fee = performers * 200
-        logger.debug(f"Performer fee for {performers} performers: {performer_fee} AED")
-        
-        # Calculate total
-        total_fee = base_fee + participant_fee + duration_fee + performer_fee
-        
-        logger.info(f"Fee calculation completed: {total_fee} AED")
-        logger.debug(f"Fee breakdown - Base: {base_fee}, Participants: {participant_fee}, Duration: {duration_fee}, Performers: {performer_fee}")
-        
-        return total_fee
+        return result['total_cost']
         
     except (ValueError, TypeError) as e:
         logger.error(f"Invalid data for fee calculation: {e}")
@@ -357,8 +509,13 @@ def save_to_mongodb(event_data: Dict[str, Any]) -> Optional[str]:
         # Prepare data for saving
         save_data = event_data.copy()
         save_data['created_at'] = datetime.now()
-        save_data['estimated_fee'] = calculate_estimated_fees(event_data)
-        save_data['app_version'] = "1.0"
+        
+        # Calculate fees using the new function
+        fee_result = calculate_event_permit_cost(**map_event_data_to_calculator_params(event_data))
+        save_data['estimated_fee'] = fee_result['total_cost']
+        save_data['fee_breakdown'] = fee_result['cost_breakdown']
+        
+        save_data['app_version'] = "1.1"  # Update version to reflect new calculation logic
         
         # Validate required fields
         required_fields = ['event_name', 'event_classification']
