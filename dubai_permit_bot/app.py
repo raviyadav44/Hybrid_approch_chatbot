@@ -105,7 +105,7 @@ def init_connection():
         logger.info("Initializing MongoDB connection")
         
         # Get connection string from environment or use default
-        connection_string = os.getenv('MONGODB_URI', "mongodb+srv://raviyadav68358:ISZAzApLKXr9kWXx@cluster0.us3p0ne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+        connection_string = os.getenv('MONGODB_URI', "dummy url")
         ##Be sure to temper the actual connection string while pusing the code in repository
         if not connection_string:
             logger.error("MongoDB connection string is not set")
