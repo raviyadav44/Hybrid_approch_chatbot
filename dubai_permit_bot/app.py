@@ -199,6 +199,254 @@ INDUSTRIES = [
 
 # ========================= CALCULATION FUNCTIONS =========================
 
+def calculate_non_ticketed_event_permit_cost(
+    event_type: str,
+    venue_type: str,
+    num_days: int = 1,
+    num_performers: int = 0,
+    num_speakers: int = 0,
+    is_urgent: bool = False,
+    is_amendment: bool = False
+) -> Dict[str, Any]:
+    """
+    Calculate the total permit cost for a non-ticketed event with improved performer handling.
+    """
+    # Define the pricing structure with performer handling
+    pricing_data = {
+        "Exhibition": {
+            "rate": 1270,
+            "urgent": 520,
+            "amendment": 0,
+            "business_amendment": 0,
+            "performer_rate": 0,
+            "days_handling": "ANY",
+            "performer_handling": "0"  # No performers included in base rate
+        },
+        "conference/forum/meeting/summit": {
+            "rate": 520,
+            "urgent": 520,
+            "amendment": 0,
+            "business_amendment": 0,
+            "performer_rate": 0,
+            "days_handling": "ANY",
+            "performer_handling": "0"
+        },
+        "Conference+ Exhibition": {
+            "rate": 1770,
+            "urgent": 520,
+            "amendment": 0,
+            "business_amendment": 0,
+            "performer_rate": 0,
+            "days_handling": "ANY",
+            "performer_handling": "0"
+        },
+        "Exhibiton/product launch +Confrence/forum/seminar/Sumit": {
+            "rate": 1770,
+            "urgent": 520,
+            "amendment": 0,
+            "business_amendment": 0,
+            "performer_rate": 0,
+            "days_handling": "ANY",
+            "performer_handling": "0"
+        },
+        "Award Cermony": {
+            "hotel_rate": 2270,  # Includes 1 performer
+            "other_rate": 1570,   # Includes 1 performer
+            "urgent": 500,
+            "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
+            "business_amendment": 0,
+            "performer_rate_hotel": 750,
+            "performer_rate_other": 350,
+            "days_handling": "1",
+            "performer_handling": "1"  # 1 performer included in base rate
+        },
+        "Award Cermony + Confrence": {
+            "hotel_rate": 2790,  # Includes 1 performer
+            "other_rate": 2090,   # Includes 1 performer
+            "urgent": 500,
+            "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
+            "business_amendment": 800,
+            "performer_rate_hotel": 750,
+            "performer_rate_other": 350,
+            "days_handling": "1",
+            "performer_handling": "1"
+        },
+        "Award Cermony+Confrence+Exhibition": {
+            "hotel_rate": 3820,  # Includes 1 performer
+            "other_rate": 3120,   # Includes 1 performer
+            "urgent": 500,
+            "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
+            "business_amendment": 800,
+            "performer_rate_hotel": 750,
+            "performer_rate_other": 350,
+            "days_handling": "1",
+            "performer_handling": "1"
+        },
+        "DJ event": {
+            "hotel_rate": 2270,  # Includes 1 performer
+            "other_rate": 1570,   # Includes 1 performer
+            "urgent": 500,
+            "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
+            "business_amendment": 0,
+            "performer_rate_hotel": 750,
+            "performer_rate_other": 350,
+            "days_handling": "1",
+            "performer_handling": "1"
+        },
+        "Musical event": {
+            "hotel_rate": 2270,  # Includes 1 performer
+            "other_rate": 1570,   # Includes 1 performer
+            "urgent": 500,
+            "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
+            "business_amendment": 0,
+            "performer_rate_hotel": 750,
+            "performer_rate_other": 350,
+            "days_handling": "1",
+            "performer_handling": "1"
+        },
+        "Comedy show": {
+            "hotel_rate": 2270,  # Includes 1 performer
+            "other_rate": 1570,   # Includes 1 performer
+            "urgent": 500,
+            "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
+            "business_amendment": 0,
+            "performer_rate_hotel": 750,
+            "performer_rate_other": 350,
+            "days_handling": "1",
+            "performer_handling": "1"
+        }
+    }
+
+    # Normalize venue type
+    venue_type_normalized = "hotel" if venue_type.lower() == "hotel" else "other"
+
+    # Try exact match first (case sensitive)
+    matched_type = None
+    for event_key in pricing_data:
+        if event_key == event_type:
+            matched_type = event_key
+            break
+    
+    # If no exact match, try case-insensitive exact match
+    if not matched_type:
+        for event_key in pricing_data:
+            if event_key.lower() == event_type.lower():
+                matched_type = event_key
+                break
+    
+    # If still no match, use default
+    if not matched_type:
+        matched_type = "conference/forum/meeting/summit"  # Default fallback
+        logger.warning(f"Could not match event type: {event_type}. Using default.")
+
+    # Get pricing info
+    event_pricing = pricing_data[matched_type]
+    
+    # Initialize cost components
+    cost_components = {
+        'base_fee': 0,
+        'urgent_fee': 0,
+        'amendment_fee': 0,
+        'business_amendment_fee': 0,
+        'performer_fee': 0,
+        'additional_days_fee': 0
+    }
+    
+    # Calculate base fee based on venue type
+    if 'rate' in event_pricing:
+        # Simple events with single rate
+        cost_components['base_fee'] = event_pricing['rate']
+    else:
+        # Events with different rates for hotel/other
+        cost_components['base_fee'] = event_pricing[f'{venue_type_normalized}_rate']
+    
+    # Add urgent fee if needed
+    if is_urgent:
+        cost_components['urgent_fee'] = event_pricing['urgent']
+    
+    # Add amendment fees if needed
+    if is_amendment:
+        if 'amendment' in event_pricing:
+            # For events with simple amendment fee
+            if isinstance(event_pricing['amendment'], (int, float)):
+                cost_components['amendment_fee'] = event_pricing['amendment']
+            # For events with complex amendment fee string
+            elif isinstance(event_pricing['amendment'], str):
+                try:
+                    amendment_parts = [part.strip() for part in event_pricing['amendment'].split('+') if part.strip()]
+                    amendment_fee = sum(int(part) for part in amendment_parts if part.isdigit())
+                    cost_components['amendment_fee'] = amendment_fee
+                except (ValueError, AttributeError):
+                    logger.warning(f"Could not parse amendment fee: {event_pricing['amendment']}")
+                    cost_components['amendment_fee'] = 0
+        
+        # Add business amendment if applicable
+        if 'business_amendment' in event_pricing:
+            cost_components['business_amendment_fee'] = event_pricing['business_amendment']
+    
+    # Calculate performer fees if applicable
+    if num_performers > 0 and 'performer_handling' in event_pricing:
+        included_performers = int(event_pricing['performer_handling'])
+        additional_performers = max(0, num_performers - included_performers)
+        
+        if additional_performers > 0:
+            if 'performer_rate' in event_pricing:
+                cost_components['performer_fee'] = additional_performers * event_pricing['performer_rate']
+            elif 'performer_rate_hotel' in event_pricing:
+                performer_rate = event_pricing[f'performer_rate_{venue_type_normalized}']
+                cost_components['performer_fee'] = additional_performers * performer_rate
+    
+    # Handle day-based pricing where days_handling is not "ANY"
+    if 'days_handling' in event_pricing and event_pricing['days_handling'] != "ANY":
+        included_days = int(event_pricing['days_handling'])
+        if num_days > included_days:
+            additional_days = num_days - included_days
+            cost_components['additional_days_fee'] = additional_days * 800
+    
+    # Calculate total cost
+    total_cost = sum(v for v in cost_components.values() if isinstance(v, (int, float)))
+    
+    # Prepare breakdown
+    breakdown = {
+        'total_cost': total_cost,
+        'cost_breakdown': cost_components,
+        'calculation_notes': []
+    }
+    
+    # Add calculation notes
+    if is_urgent:
+        breakdown['calculation_notes'].append(f"Added urgent processing fee: {cost_components['urgent_fee']} AED")
+    
+    if is_amendment:
+        amendment_total = cost_components['amendment_fee'] + cost_components['business_amendment_fee']
+        if amendment_total > 0:
+            breakdown['calculation_notes'].append(f"Added amendment fees: {amendment_total} AED")
+    
+    if cost_components['performer_fee'] > 0:
+        breakdown['calculation_notes'].append(
+            f"Added {cost_components['performer_fee']} AED for {num_performers - included_performers} additional performer(s)"
+        )
+    
+    if cost_components['additional_days_fee'] > 0:
+        breakdown['calculation_notes'].append(
+            f"Added {cost_components['additional_days_fee']} AED for additional day(s)"
+        )
+    
+    # Add debug info in debug mode
+    if st.session_state.get('debug_mode', False):
+        breakdown['calculation_notes'].append(
+            f"Matched event type: {matched_type} (from input: {event_type})"
+        )
+        breakdown['calculation_notes'].append(
+            f"Venue type: {venue_type_normalized}"
+        )
+        breakdown['calculation_notes'].append(
+            f"Included performers: {included_performers}, Additional performers: {additional_performers}"
+        )
+    
+    return breakdown
+
+
 def calculate_event_permit_cost(
     event_type,
     is_ticketed,
@@ -209,6 +457,22 @@ def calculate_event_permit_cost(
     is_urgent=False,
     is_amendment=False
 ):
+    
+    """
+    Calculate the total permit cost for an event based on various parameters.
+    Uses the pricing structure from the provided CSV data.
+    """
+    if not is_ticketed:
+        return calculate_non_ticketed_event_permit_cost(
+            event_type=event_type,
+            venue_type=venue_type,
+            num_days=num_days,
+            num_performers=num_performers,
+            num_speakers=num_speakers,
+            is_urgent=is_urgent,
+            is_amendment=is_amendment
+        )
+
     """
     Calculate the total permit cost for an event based on various parameters.
     Uses the pricing structure from the provided CSV data.
@@ -317,13 +581,22 @@ def map_event_data_to_calculator_params(event_data):
     # Determine main event type (use the first one if multiple selected)
     event_type = event_types[0] if event_types else "Conference"
     
+    # Fix common typos in event type names to match pricing data
+    event_type_mapping = {
+        "Award Ceremony": "Award Cermony",
+        "Award Ceremony + Conference": "Award Cermony + Confrence",
+        "Award Ceremony + Conference + Exhibition": "Award Cermony+Confrence+Exhibition",
+        "Exhibition/Product Launch + Conference/Forum/Seminar/Summit": "Exhibiton/product launch +Confrence/forum/seminar/Sumit"
+    }
+    event_type = event_type_mapping.get(event_type, event_type)
+    
     # Determine if ticketed
     ticketing_type = event_data.get('ticketing_type', 'non_ticketed')
     is_ticketed = ticketing_type in ['paid_ticketed', 'free_ticketed']
     
-    # Map venue type
-    venue = event_data.get('venue', '')
-    venue_type = 'hotel' if 'hotel' in venue.lower() else 'other'
+    # Map venue type - ensure it's either 'hotel' or 'other'
+    venue = event_data.get('venue', '').lower()
+    venue_type = 'hotel' if 'hotel' in venue else 'other'
     
     # Get other parameters
     num_days = event_data.get('no_of_days', 1)
@@ -937,9 +1210,9 @@ def main():
                     # Add urgent/amendment options
                     col1, col2 = st.columns(2)
                     with col1:
-                        is_urgent = st.checkbox("Urgent Processing (+500 AED)", value=False)
+                        is_urgent = st.checkbox("Urgent Processing (500/520 AED)", value=False)
                     with col2:
-                        is_amendment = st.checkbox("Amendment Request", value=False)
+                        is_amendment = st.checkbox("Amendment Request (Not applicable for Business events)", value=False)
                     
                     event_description = st.text_area("Event Description", placeholder="Brief description of your event...")
                     
