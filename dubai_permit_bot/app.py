@@ -15,49 +15,38 @@ import sys
 def setup_logging():
     """Configure logging for the application"""
     try:
-        # Create logs directory if it doesn't exist
         if not os.path.exists('logs'):
             os.makedirs('logs')
         
-        # Configure logging
         log_format = '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
         
-        # Create logger
         logger = logging.getLogger('dubai_event_app')
         logger.setLevel(logging.DEBUG)
-        
-        # Clear existing handlers
         logger.handlers.clear()
         
-        # File handler for all logs
         file_handler = logging.FileHandler('logs/dubai_event_app.log', encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter(log_format))
         
-        # Error file handler for errors only
         error_handler = logging.FileHandler('logs/errors.log', encoding='utf-8')
         error_handler.setLevel(logging.ERROR)
         error_handler.setFormatter(logging.Formatter(log_format))
         
-        # Console handler for development
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
         
-        # Add handlers to logger
         logger.addHandler(file_handler)
         logger.addHandler(error_handler)
         logger.addHandler(console_handler)
         
         return logger
     except Exception as e:
-        # Fallback to basic logging if setup fails
         logging.basicConfig(level=logging.INFO, format=log_format)
         logger = logging.getLogger('dubai_event_app')
         logger.error(f"Failed to setup advanced logging: {e}")
         return logger
 
-# Initialize logger
 logger = setup_logging()
 
 # ========================= ERROR HANDLING DECORATORS =========================
@@ -74,14 +63,9 @@ def handle_exceptions(func):
         except Exception as e:
             logger.error(f"Error in function {func.__name__}: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            
-            # Show user-friendly error message
             st.error(f"An error occurred: {str(e)}")
-            
-            # In debug mode, show more details
             if st.session_state.get('debug_mode', False):
                 st.error(f"Debug Info: {traceback.format_exc()}")
-            
             return None
     return wrapper
 
@@ -103,35 +87,28 @@ def init_connection():
     """Initialize MongoDB connection with enhanced error handling"""
     try:
         logger.info("Initializing MongoDB connection")
+        connection_string = os.getenv('MONGODB_URI', "dummy_url")
         
-        # Get connection string from environment or use default
-        connection_string = os.getenv('MONGODB_URI', "dummy url")
-        ##Be sure to temper the actual connection string while pusing the code in repository
         if not connection_string:
             logger.error("MongoDB connection string is not set")
             st.error("Database connection string is not configured. Please check your environment variables.")
             return None
 
-
         logger.debug(f"Using connection string: {connection_string[:20]}...")
         
-        # Create client with timeout settings
         client = pymongo.MongoClient(
             connection_string,
-            serverSelectionTimeoutMS=5000,  # 5 second timeout
+            serverSelectionTimeoutMS=5000,
             connectTimeoutMS=5000,
             maxPoolSize=10
         )
         
-        # Test connection
         client.admin.command('ping')
         logger.info("MongoDB connection successful")
         
-        # Return collection
         db = client["Chatbot"]
         collection = db["event_data"]
         
-        # Log collection info
         logger.info(f"Connected to database: {db.name}")
         logger.info(f"Using collection: {collection.name}")
         
@@ -202,12 +179,7 @@ NON_TICKETED_EVENT_TYPES = [
 ]
 
 DUBAI_VENUES = [
-    "Dubai Hotel 1",
-    "Dubai Hotel 2",
-    "Dubai Convention Center",
-    "Emirates Palace",
-    "Burj Al Arab",
-    "Atlantis The Palm",
+    "Hotel",
     "Other"
 ]
 
@@ -224,6 +196,184 @@ INDUSTRIES = [
     "Food & Beverage",
     "Other"
 ]
+
+# ========================= CALCULATION FUNCTIONS =========================
+
+def calculate_event_permit_cost(
+    event_type,
+    is_ticketed,
+    venue_type=None,
+    num_days=1,
+    num_performers=0,
+    num_speakers=0,
+    is_urgent=False,
+    is_amendment=False
+):
+    """
+    Calculate the total permit cost for an event based on various parameters.
+    Uses the pricing structure from the provided CSV data.
+    """
+    # Define the pricing structure from CSV with day handling info
+    pricing_data = {
+        "Exhibition": {"rate": 1270, "urgent": 500, "amendment": "NA", "days_handling": "ANY"},
+        "Conference": {"rate": 1270, "urgent": 500, "amendment": "NA", "days_handling": "ANY"},
+        "Conference + Exhibition": {"rate": 1770, "urgent": 500, "amendment": "NA", "days_handling": "ANY"},
+        "Product Launch/Forum/Seminar/Summit": {"rate": 1270, "urgent": 500, "amendment": "NA", "days_handling": "ANY"},
+        "Exhibition/Product Launch + Conference/Forum/Seminar/Summit": {"rate": 1770, "urgent": 500, "amendment": "NA", "days_handling": "ANY"},
+        "Award Ceremony": {"rate": 1520, "urgent": 500, "amendment": 1320, "days_handling": "1"},
+        "Award Ceremony + Conference": {"rate": 2570, "urgent": 500, "amendment": 1320, "days_handling": "1"},
+        "Award Ceremony + Conference + Exhibition": {"rate": 3070, "urgent": 500, "amendment": 1320, "days_handling": "1"},
+        "DJ Event": {"rate": 1520, "urgent": 500, "amendment": 1320, "days_handling": "1"},
+        "Musical Event": {"rate": 1520, "urgent": 500, "amendment": 1320, "days_handling": "1"},
+        "Comedy Show": {"rate": 1520, "urgent": 500, "amendment": 1320, "days_handling": "1"}
+    }
+
+    # First try exact matching (case insensitive)
+    matched_type = None
+    normalized_input = event_type.strip().lower()
+    
+    # Try exact match first
+    for event_key in pricing_data:
+        if event_key.lower() == normalized_input:
+            matched_type = event_key
+            break
+    
+    # If no exact match, try partial match (but prioritize longer matches)
+    if not matched_type:
+        best_match = None
+        best_length = 0
+        
+        for event_key in pricing_data:
+            if event_key.lower() in normalized_input:
+                # Prefer the longest matching key
+                if len(event_key) > best_length:
+                    best_match = event_key
+                    best_length = len(event_key)
+        
+        matched_type = best_match
+    
+    if not matched_type:
+        matched_type = "Conference"  # Default fallback
+        logger.warning(f"Could not match event type: {event_type}. Using default.")
+    
+    # Get pricing info
+    event_pricing = pricing_data[matched_type]
+    base_rate = event_pricing["rate"]
+    
+    # Initialize cost components
+    cost_components = {
+        'base_fee': base_rate,
+        'urgent_fee': event_pricing["urgent"] if is_urgent else 0,
+        'amendment_fee': event_pricing["amendment"] if is_amendment and event_pricing["amendment"] != "NA" else 0,
+        'additional_days_fee': 0
+    }
+    
+    # Handle day-based pricing for ticketed events where days_handling is not "ANY"
+    if is_ticketed and event_pricing["days_handling"] != "ANY":
+        included_days = int(event_pricing["days_handling"])
+        if num_days > included_days:
+            additional_days = num_days - included_days
+            cost_components['additional_days_fee'] = additional_days * 800
+    
+    # Calculate total cost
+    total_cost = sum(v for v in cost_components.values() if isinstance(v, (int, float)))
+    
+    # Prepare breakdown
+    breakdown = {
+        'total_cost': total_cost,
+        'cost_breakdown': cost_components,
+        'calculation_notes': []
+    }
+    
+    # Add calculation notes
+    if is_urgent:
+        breakdown['calculation_notes'].append(f"Added urgent processing fee: {cost_components['urgent_fee']} AED")
+    
+    if is_amendment and event_pricing["amendment"] != "NA":
+        breakdown['calculation_notes'].append(f"Added amendment fee: {cost_components['amendment_fee']} AED")
+    
+    if cost_components['additional_days_fee'] > 0:
+        breakdown['calculation_notes'].append(
+            f"Added {cost_components['additional_days_fee']} AED for {num_days - int(event_pricing['days_handling'])} additional day(s) at 800 AED/day"
+        )
+    
+    # Add debug info in debug mode
+    if st.session_state.get('debug_mode', False):
+        breakdown['calculation_notes'].append(
+            f"Matched event type: {matched_type} (from input: {event_type})"
+        )
+    
+    return breakdown
+
+def map_event_data_to_calculator_params(event_data):
+    """
+    Map event data from the app to calculator parameters.
+    """
+    # Extract event types
+    event_types = event_data.get('event_types', [])
+    if isinstance(event_types, str):
+        event_types = [event_types]
+    
+    # Determine main event type (use the first one if multiple selected)
+    event_type = event_types[0] if event_types else "Conference"
+    
+    # Determine if ticketed
+    ticketing_type = event_data.get('ticketing_type', 'non_ticketed')
+    is_ticketed = ticketing_type in ['paid_ticketed', 'free_ticketed']
+    
+    # Map venue type
+    venue = event_data.get('venue', '')
+    venue_type = 'hotel' if 'hotel' in venue.lower() else 'other'
+    
+    # Get other parameters
+    num_days = event_data.get('no_of_days', 1)
+    num_performers = event_data.get('no_of_performers', 0)
+    num_speakers = event_data.get('no_of_speakers', 0)
+    
+    # Get urgent/amendment status with defaults
+    is_urgent = event_data.get('is_urgent', False)
+    is_amendment = event_data.get('is_amendment', False)
+    
+    return {
+        'event_type': event_type,
+        'is_ticketed': is_ticketed,
+        'venue_type': venue_type,
+        'num_days': num_days,
+        'num_performers': num_performers,
+        'num_speakers': num_speakers,
+        'is_urgent': is_urgent,
+        'is_amendment': is_amendment
+    }
+
+@handle_exceptions
+def calculate_estimated_fees(event_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Calculate estimated government fees using the new calculation logic"""
+    try:
+        logger.debug(f"Calculating fees for event: {event_data.get('event_name', 'Unknown')}")
+        
+        # Validate input data
+        if not isinstance(event_data, dict):
+            raise ValueError("Event data must be a dictionary")
+        
+        # Map event data to calculator parameters
+        params = map_event_data_to_calculator_params(event_data)
+        
+        # Calculate fees using the new function
+        result = calculate_event_permit_cost(**params)
+        
+        logger.info(f"Fee calculation completed: {result['total_cost']} AED")
+        logger.debug(f"Fee breakdown: {result['cost_breakdown']}")
+        
+        return result
+        
+    except (ValueError, TypeError) as e:
+        logger.error(f"Invalid data for fee calculation: {e}")
+        st.error("Invalid event data for fee calculation")
+        return {'total_cost': 0, 'cost_breakdown': {}, 'calculation_notes': ["Error calculating fees"]}
+    except Exception as e:
+        logger.error(f"Unexpected error in fee calculation: {e}")
+        st.error("Error calculating fees")
+        return {'total_cost': 0, 'cost_breakdown': {}, 'calculation_notes': ["Error calculating fees"]}
 
 # ========================= CHAT FUNCTIONS =========================
 
@@ -244,7 +394,6 @@ def add_to_chat(message: str, is_bot: bool = True):
         
     except Exception as e:
         logger.error(f"Failed to add chat message: {e}")
-        # Don't break the app, just log the error
 
 @handle_exceptions
 def display_chat_history():
@@ -268,225 +417,6 @@ def display_chat_history():
         logger.error(f"Failed to display chat history: {e}")
         st.error("Error displaying chat history")
 
-# ========================= CALCULATION FUNCTIONS =========================
-
-def calculate_event_permit_cost(
-    event_type,
-    is_ticketed,
-    venue_type=None,
-    num_days=1,
-    num_performers=0,
-    is_urgent=False,
-    is_amendment=False,
-    has_exhibition=False,
-    has_conference=False,
-    has_award_ceremony=False
-):
-    """
-    Calculate the total permit cost for an event based on various parameters.
-    """
-    # Initialize cost components
-    cost_components = {
-        'base_fee': 0,
-        'per_day_fee': 0,
-        'performer_fee': 0,
-        'e_permit_fee': 200,
-        'knowledge_dirham': 10,
-        'innovation_dirham': 10,
-        'dtcm_management_fee': 500 if event_type == 'entertainment' else 0,
-        'ded_fee': 50 if event_type == 'business' else 0,
-        'urgent_fee': 500 if is_urgent else 0,
-        'amendment_fee': 800 if is_amendment else 520 if (not is_ticketed and is_amendment) else 0
-    }
-    
-    # Calculate base fee based on event type and ticketing status
-    if event_type == 'business':
-        if is_ticketed:
-            if has_exhibition and has_conference:
-                cost_components['base_fee'] = 1500
-            elif has_exhibition:
-                cost_components['base_fee'] = 1000
-            elif has_conference:
-                cost_components['base_fee'] = 1000
-            else:
-                cost_components['base_fee'] = 1000  # Default for ticketed business events
-        else:  # Non-ticketed
-            if has_exhibition and has_conference:
-                cost_components['base_fee'] = 1500
-            elif has_exhibition:
-                cost_components['base_fee'] = 1000
-            elif has_conference:
-                cost_components['base_fee'] = 250
-            else:
-                cost_components['base_fee'] = 1000  # Default for non-ticketed business events
-    
-    elif event_type == 'entertainment':
-        if is_ticketed:
-            cost_components['base_fee'] = 800  # Event permit fee for ticketed
-        else:  # Non-ticketed
-            if venue_type == 'hotel':
-                cost_components['base_fee'] = 800  # Per day
-            else:
-                cost_components['base_fee'] = 500  # Per day for other venues
-            
-            # Performer fees only apply to non-ticketed entertainment events
-            if venue_type == 'hotel':
-                cost_components['performer_fee'] = 750 * num_performers
-            else:
-                cost_components['performer_fee'] = 350 * num_performers
-    
-    elif event_type == 'sports_charity':
-        cost_components['base_fee'] = 0  # No base fee, only additional fees apply
-    
-    # Calculate per day fee
-    if event_type == 'entertainment' and not is_ticketed:
-        if venue_type == 'hotel':
-            cost_components['per_day_fee'] = 800 * num_days
-        else:
-            cost_components['per_day_fee'] = 500 * num_days
-    else:
-        # For ticketed entertainment and other event types, first day included in base fee
-        cost_components['per_day_fee'] = 800 * (num_days - 1) if num_days > 1 else 0
-    
-    # Special cases for combined events
-    if has_award_ceremony:
-        if event_type == 'business':
-            if is_ticketed:
-                if has_conference and has_exhibition:
-                    cost_components['base_fee'] = 3070 - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
-                elif has_conference:
-                    cost_components['base_fee'] = 2570 - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
-                else:
-                    cost_components['base_fee'] = 1520 - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
-            else:  # Non-ticketed
-                if venue_type == 'hotel':
-                    if has_conference and has_exhibition:
-                        cost_components['base_fee'] = 3820 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
-                    elif has_conference:
-                        cost_components['base_fee'] = 2790 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
-                    else:
-                        cost_components['base_fee'] = 2270 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
-                else:  # Other venue
-                    if has_conference and has_exhibition:
-                        cost_components['base_fee'] = 2090  # This needs verification as the spreadsheet shows '?'
-                    elif has_conference:
-                        cost_components['base_fee'] = 2090 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
-                    else:
-                        cost_components['base_fee'] = 1570 - cost_components['performer_fee'] - cost_components['e_permit_fee'] - cost_components['knowledge_dirham'] - cost_components['innovation_dirham']
-    
-    # Calculate total cost
-    total_cost = sum(cost_components.values())
-    
-    # Prepare breakdown
-    breakdown = {
-        'total_cost': total_cost,
-        'cost_breakdown': cost_components,
-        'calculation_notes': []
-    }
-    
-    # Add calculation notes
-    if num_days > 1 and (event_type != 'entertainment' or is_ticketed):
-        breakdown['calculation_notes'].append(f"Added {cost_components['per_day_fee']} AED for {num_days-1} additional day(s)")
-    
-    if num_performers > 0 and event_type == 'entertainment' and not is_ticketed:
-        breakdown['calculation_notes'].append(f"Added {cost_components['performer_fee']} AED for {num_performers} performer(s) at {venue_type} venue")
-    
-    if is_urgent:
-        breakdown['calculation_notes'].append("Added 500 AED urgent processing fee")
-    
-    if is_amendment:
-        breakdown['calculation_notes'].append(f"Added {cost_components['amendment_fee']} AED amendment fee")
-    
-    return breakdown
-
-
-def map_event_data_to_calculator_params(event_data):
-    """
-    Map event data from the app to calculator parameters.
-    """
-    # Extract event types
-    event_types = event_data.get('event_types', [])
-    if isinstance(event_types, str):
-        event_types = [event_types]
-    
-    # Determine main event type based on collected data
-    event_type = 'business'  # Default
-    
-    # Check for entertainment events
-    entertainment_keywords = ['DJ Event', 'Musical Event', 'Comedy Show']
-    if any(keyword in event_types for keyword in entertainment_keywords):
-        event_type = 'entertainment'
-    
-    # Check for sports/charity events (add logic if needed)
-    sports_charity_keywords = ['Sports', 'Charity', 'Marathon', 'Tournament']
-    if any(keyword in str(event_types).lower() for keyword in ['sports', 'charity', 'marathon', 'tournament']):
-        event_type = 'sports_charity'
-    
-    # Determine if ticketed
-    ticketing_type = event_data.get('ticketing_type', 'non_ticketed')
-    is_ticketed = ticketing_type in ['paid_ticketed', 'free_ticketed']
-    
-    # Map venue type
-    venue = event_data.get('venue', '')
-    venue_type = 'hotel' if 'hotel' in venue.lower() else 'other'
-    
-    # Check for specific event components
-    has_exhibition = any('exhibition' in event_type.lower() for event_type in event_types)
-    has_conference = any(keyword in event_type.lower() for event_type in event_types 
-                        for keyword in ['conference', 'forum', 'seminar', 'summit', 'meeting'])
-    has_award_ceremony = any('award' in event_type.lower() for event_type in event_types)
-    
-    # Get other parameters
-    num_days = event_data.get('no_of_days', 1)
-    num_performers = event_data.get('no_of_performers', 0)
-    
-    # These would need to be collected in the app if needed
-    is_urgent = event_data.get('is_urgent', False)
-    is_amendment = event_data.get('is_amendment', False)
-    
-    return {
-        'event_type': event_type,
-        'is_ticketed': is_ticketed,
-        'venue_type': venue_type,
-        'num_days': num_days,
-        'num_performers': num_performers,
-        'is_urgent': is_urgent,
-        'is_amendment': is_amendment,
-        'has_exhibition': has_exhibition,
-        'has_conference': has_conference,
-        'has_award_ceremony': has_award_ceremony
-    }
-
-@handle_exceptions
-def calculate_estimated_fees(event_data: Dict[str, Any]) -> int:
-    """Calculate estimated government fees using the new calculation logic"""
-    try:
-        logger.debug(f"Calculating fees for event: {event_data.get('event_name', 'Unknown')}")
-        
-        # Validate input data
-        if not isinstance(event_data, dict):
-            raise ValueError("Event data must be a dictionary")
-        
-        # Map event data to calculator parameters
-        params = map_event_data_to_calculator_params(event_data)
-        
-        # Calculate fees using the new function
-        result = calculate_event_permit_cost(**params)
-        
-        logger.info(f"Fee calculation completed: {result['total_cost']} AED")
-        logger.debug(f"Fee breakdown: {result['cost_breakdown']}")
-        
-        return result['total_cost']
-        
-    except (ValueError, TypeError) as e:
-        logger.error(f"Invalid data for fee calculation: {e}")
-        st.error("Invalid event data for fee calculation")
-        return 0
-    except Exception as e:
-        logger.error(f"Unexpected error in fee calculation: {e}")
-        st.error("Error calculating fees")
-        return 0
-
 # ========================= DATABASE OPERATIONS =========================
 
 @handle_exceptions
@@ -495,35 +425,28 @@ def save_to_mongodb(event_data: Dict[str, Any]) -> Optional[str]:
     try:
         logger.info(f"Saving event data: {event_data.get('event_name', 'Unknown')}")
         
-        # Validate event data
         if not event_data:
             raise ValueError("Event data is empty")
         
-        # Get collection
         collection = init_connection()
         if collection is None:
             logger.error("No database connection available")
             st.error("Database connection not available")
             return None
         
-        # Prepare data for saving
         save_data = event_data.copy()
         save_data['created_at'] = datetime.now()
         
-        # Calculate fees using the new function
         fee_result = calculate_event_permit_cost(**map_event_data_to_calculator_params(event_data))
         save_data['estimated_fee'] = fee_result['total_cost']
         save_data['fee_breakdown'] = fee_result['cost_breakdown']
+        save_data['app_version'] = "1.2"  # Updated version
         
-        save_data['app_version'] = "1.1"  # Update version to reflect new calculation logic
-        
-        # Validate required fields
         required_fields = ['event_name', 'event_classification']
         for field in required_fields:
             if field not in save_data or not save_data[field]:
                 raise ValueError(f"Required field missing: {field}")
         
-        # Insert into database
         logger.debug("Inserting data into MongoDB")
         result = collection.insert_one(save_data)
         
@@ -560,7 +483,6 @@ def handle_button_clicks() -> bool:
     try:
         logger.debug("Processing button clicks")
         
-        # Track button clicks for debugging
         button_states = {}
         for key in st.session_state:
             if key.endswith('_clicked') and st.session_state.get(key):
@@ -770,32 +692,26 @@ def handle_button_clicks() -> bool:
         if st.session_state.get('summary_clicked'):
             logger.info("Summary clicked")
             try:
-                estimated_fee = calculate_estimated_fees(st.session_state.event_data)
-                
-                # Calculate breakdown components
-                base_fee = 2000 if st.session_state.event_data.get('event_classification') == 'internal' else 3000
-                participants = st.session_state.event_data.get('no_of_participants', 0)
-                participant_fee = 0
-                if participants > 500:
-                    participant_fee = 3000
-                elif participants > 200:
-                    participant_fee = 1500
-                elif participants > 100:
-                    participant_fee = 800
-                
-                duration_fee = max(0, (st.session_state.event_data.get('no_of_days', 1) - 3) * 500)
-                performer_fee = st.session_state.event_data.get('no_of_performers', 0) * 200
+                fee_result = calculate_estimated_fees(st.session_state.event_data)
                 
                 breakdown = f"""
                 **DETAILED FEE BREAKDOWN** \n
-                
-                Base Fee: AED {base_fee:,} \n
-                Participant Fee: AED {participant_fee:,} \n
-                Duration Fee: AED {duration_fee:,} \n
-                Performer Fee: AED {performer_fee:,} \n
-                
-                **Total: AED {estimated_fee:,}**
                 """
+                
+                # Add each cost component
+                for key, value in fee_result['cost_breakdown'].items():
+                    if value > 0:  # Only show non-zero items
+                        breakdown += f"{key.replace('_', ' ').title()}: AED {value:,}\n"
+                
+                # Add total
+                breakdown += f"\n**Total: AED {fee_result['total_cost']:,}**"
+                
+                # Add calculation notes if any
+                if fee_result['calculation_notes']:
+                    breakdown += "\n\n**Notes:**\n"
+                    for note in fee_result['calculation_notes']:
+                        breakdown += f"- {note}\n"
+                
                 add_to_chat(breakdown, True)
             except Exception as e:
                 logger.error(f"Error generating summary: {e}")
@@ -981,7 +897,6 @@ def main():
                     with col1:
                         event_name = st.text_input("Event Name*", placeholder="Enter your event name")
                         
-                        # Event types based on classification
                         try:
                             if st.session_state.event_data.get('ticketing_type') in ['paid_ticketed', 'free_ticketed']:
                                 event_types = st.multiselect("Event Type*", TICKETED_EVENT_TYPES)
@@ -1004,10 +919,12 @@ def main():
                         try:
                             no_of_participants = st.number_input("Number of Participants*", min_value=1, max_value=10000, value=50)
                             no_of_performers = st.number_input("Number of Performers", min_value=0, max_value=100, value=0)
+                            no_of_speakers = st.number_input("Number of Speakers", min_value=0, max_value=100, value=0)
                         except Exception as e:
                             logger.error(f"Error with participant/performer inputs: {e}")
                             no_of_participants = 50
                             no_of_performers = 0
+                            no_of_speakers = 0
                         
                         try:
                             start_date = st.date_input("Event Start Date*", min_value=date.today())
@@ -1016,6 +933,13 @@ def main():
                             logger.error(f"Error with date inputs: {e}")
                             start_date = date.today()
                             end_date = date.today()
+                    
+                    # Add urgent/amendment options
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        is_urgent = st.checkbox("Urgent Processing (+500 AED)", value=False)
+                    with col2:
+                        is_amendment = st.checkbox("Amendment Request", value=False)
                     
                     event_description = st.text_area("Event Description", placeholder="Brief description of your event...")
                     
@@ -1060,16 +984,19 @@ def main():
                                     'no_of_days': int(no_of_days),
                                     'no_of_participants': int(no_of_participants),
                                     'no_of_performers': int(no_of_performers),
+                                    'no_of_speakers': int(no_of_speakers),
                                     'start_date': start_date.isoformat(),
                                     'end_date': end_date.isoformat(),
+                                    'is_urgent': is_urgent,
+                                    'is_amendment': is_amendment,
                                     'event_description': event_description.strip() if event_description else ""
                                 })
                                 
                                 logger.info(f"Event data stored: {event_name}")
                                 add_to_chat(f"Event Details Submitted: {event_name}", False)
                                 
-                                # Calculate and display fees immediately
-                                estimated_fee = calculate_estimated_fees(st.session_state.event_data)
+                                # Calculate and display fees
+                                fee_result = calculate_estimated_fees(st.session_state.event_data)
                                 fee_message = f"""
                                 **💰 ESTIMATED GOVERNMENT FEES**
                                 
@@ -1078,7 +1005,7 @@ def main():
                                 Participants: **{no_of_participants:,}**
                                 Duration: **{no_of_days} day(s)**
                                 
-                                **Estimated Total Fee: AED {estimated_fee:,}**
+                                **Estimated Total Fee: AED {fee_result['total_cost']:,}**
                                 
                                 *This is an estimate. Final fees may vary based on additional requirements and government regulations.*
                                 """
@@ -1123,11 +1050,10 @@ def main():
                         if key not in ['created_at'] and value is not None:
                             formatted_key = key.replace('_', ' ').title()
                             
-                            # Format different types of values
                             if isinstance(value, list):
                                 formatted_value = ", ".join(value) if value else "None"
                             elif isinstance(value, (int, float)):
-                                formatted_value = f"{value:,}" if key in ['no_of_participants', 'no_of_performers'] else str(value)
+                                formatted_value = f"{value:,}" if key in ['no_of_participants', 'no_of_performers', 'no_of_speakers'] else str(value)
                             else:
                                 formatted_value = str(value)
                             
@@ -1136,11 +1062,11 @@ def main():
                     # Show estimated fee if available
                     if event_info:
                         try:
-                            estimated_fee = calculate_estimated_fees(event_info)
-                            st.write(f"**Estimated Fee:** AED {estimated_fee:,}")
+                            fee_result = calculate_estimated_fees(event_info)
+                            st.write(f"**Estimated Fee:** AED {fee_result['total_cost']:,}")
                         except Exception as e:
                             logger.error(f"Error calculating fee for sidebar: {e}")
-                            st.write("**Estimated Fee:** Error calculating")
+                            st.write("**Estimated Fee:** Calculating...")
                 
                 except Exception as e:
                     logger.error(f"Error displaying event info in sidebar: {e}")
@@ -1184,15 +1110,12 @@ def main():
         logger.critical(f"Critical error in main application: {e}")
         logger.critical(f"Traceback: {traceback.format_exc()}")
         
-        # Show error to user
         st.error("A critical error occurred. Please refresh the page.")
         
-        # In debug mode, show full error
         if st.session_state.get('debug_mode', False):
             st.error(f"Debug - Critical Error: {e}")
             st.code(traceback.format_exc())
         
-        # Try to reset the application
         try:
             if st.button("🔄 Reset Application"):
                 for key in list(st.session_state.keys()):
