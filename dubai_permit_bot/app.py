@@ -217,7 +217,6 @@ def calculate_non_ticketed_event_permit_cost(
             "rate": 1270,
             "urgent": 520,
             "amendment": 0,
-            "business_amendment": 0,
             "performer_rate": 0,
             "days_handling": "ANY",
             "performer_handling": "0"  # No performers included in base rate
@@ -226,7 +225,6 @@ def calculate_non_ticketed_event_permit_cost(
             "rate": 520,
             "urgent": 520,
             "amendment": 0,
-            "business_amendment": 0,
             "performer_rate": 0,
             "days_handling": "ANY",
             "performer_handling": "0"
@@ -235,7 +233,6 @@ def calculate_non_ticketed_event_permit_cost(
             "rate": 1770,
             "urgent": 520,
             "amendment": 0,
-            "business_amendment": 0,
             "performer_rate": 0,
             "days_handling": "ANY",
             "performer_handling": "0"
@@ -244,7 +241,6 @@ def calculate_non_ticketed_event_permit_cost(
             "rate": 1770,
             "urgent": 520,
             "amendment": 0,
-            "business_amendment": 0,
             "performer_rate": 0,
             "days_handling": "ANY",
             "performer_handling": "0"
@@ -254,7 +250,6 @@ def calculate_non_ticketed_event_permit_cost(
             "other_rate": 1570,   # Includes 1 performer
             "urgent": 500,
             "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
-            "business_amendment": 0,
             "performer_rate_hotel": 750,
             "performer_rate_other": 350,
             "days_handling": "1",
@@ -265,7 +260,6 @@ def calculate_non_ticketed_event_permit_cost(
             "other_rate": 2090,   # Includes 1 performer
             "urgent": 500,
             "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
-            "business_amendment": 800,
             "performer_rate_hotel": 750,
             "performer_rate_other": 350,
             "days_handling": "1",
@@ -276,7 +270,6 @@ def calculate_non_ticketed_event_permit_cost(
             "other_rate": 3120,   # Includes 1 performer
             "urgent": 500,
             "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
-            "business_amendment": 800,
             "performer_rate_hotel": 750,
             "performer_rate_other": 350,
             "days_handling": "1",
@@ -287,7 +280,6 @@ def calculate_non_ticketed_event_permit_cost(
             "other_rate": 1570,   # Includes 1 performer
             "urgent": 500,
             "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
-            "business_amendment": 0,
             "performer_rate_hotel": 750,
             "performer_rate_other": 350,
             "days_handling": "1",
@@ -298,7 +290,6 @@ def calculate_non_ticketed_event_permit_cost(
             "other_rate": 1570,   # Includes 1 performer
             "urgent": 500,
             "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
-            "business_amendment": 0,
             "performer_rate_hotel": 750,
             "performer_rate_other": 350,
             "days_handling": "1",
@@ -309,7 +300,6 @@ def calculate_non_ticketed_event_permit_cost(
             "other_rate": 1570,   # Includes 1 performer
             "urgent": 500,
             "amendment": "800+500+750+20" if venue_type.lower() == "hotel" else "800+500+350+20",
-            "business_amendment": 0,
             "performer_rate_hotel": 750,
             "performer_rate_other": 350,
             "days_handling": "1",
@@ -347,7 +337,6 @@ def calculate_non_ticketed_event_permit_cost(
         'base_fee': 0,
         'urgent_fee': 0,
         'amendment_fee': 0,
-        'business_amendment_fee': 0,
         'performer_fee': 0,
         'additional_days_fee': 0
     }
@@ -360,31 +349,10 @@ def calculate_non_ticketed_event_permit_cost(
         # Events with different rates for hotel/other
         cost_components['base_fee'] = event_pricing[f'{venue_type_normalized}_rate']
     
-    # Add urgent fee if needed
-    if is_urgent:
-        cost_components['urgent_fee'] = event_pricing['urgent']
-    
-    # Add amendment fees if needed
-    if is_amendment:
-        if 'amendment' in event_pricing:
-            # For events with simple amendment fee
-            if isinstance(event_pricing['amendment'], (int, float)):
-                cost_components['amendment_fee'] = event_pricing['amendment']
-            # For events with complex amendment fee string
-            elif isinstance(event_pricing['amendment'], str):
-                try:
-                    amendment_parts = [part.strip() for part in event_pricing['amendment'].split('+') if part.strip()]
-                    amendment_fee = sum(int(part) for part in amendment_parts if part.isdigit())
-                    cost_components['amendment_fee'] = amendment_fee
-                except (ValueError, AttributeError):
-                    logger.warning(f"Could not parse amendment fee: {event_pricing['amendment']}")
-                    cost_components['amendment_fee'] = 0
-        
-        # Add business amendment if applicable
-        if 'business_amendment' in event_pricing:
-            cost_components['business_amendment_fee'] = event_pricing['business_amendment']
-    
     # Calculate performer fees if applicable
+    included_performers = 0
+    additional_performers = 0
+    
     if num_performers > 0 and 'performer_handling' in event_pricing:
         included_performers = int(event_pricing['performer_handling'])
         additional_performers = max(0, num_performers - included_performers)
@@ -396,12 +364,49 @@ def calculate_non_ticketed_event_permit_cost(
                 performer_rate = event_pricing[f'performer_rate_{venue_type_normalized}']
                 cost_components['performer_fee'] = additional_performers * performer_rate
     
-    # Handle day-based pricing where days_handling is not "ANY"
+    # Calculate additional days fee (800 AED per extra day)
     if 'days_handling' in event_pricing and event_pricing['days_handling'] != "ANY":
         included_days = int(event_pricing['days_handling'])
-        if num_days > included_days:
-            additional_days = num_days - included_days
-            cost_components['additional_days_fee'] = additional_days * 800
+        additional_days = max(0, num_days - included_days)
+        cost_components['additional_days_fee'] = additional_days * 800
+    
+    # Handle amendment fees - dynamic calculation
+    if is_amendment:
+        # For events with simple amendment fee
+        if isinstance(event_pricing.get('amendment'), (int, float)):
+            cost_components['amendment_fee'] = event_pricing['amendment']
+        # For events with complex amendment fee string
+        elif isinstance(event_pricing.get('amendment'), str):
+            try:
+                amendment_parts = [part.strip() for part in event_pricing['amendment'].split('+') if part.strip()]
+                
+                # Calculate dynamic parts
+                dynamic_parts = []
+                for part in amendment_parts:
+                    if part in ['750', '350']:
+                        # Performer rate - calculate based on actual performers
+                        performer_rate = event_pricing[f'performer_rate_{venue_type_normalized}']
+                        dynamic_parts.append(str(additional_performers * performer_rate))
+                    elif part == '800':
+                        # Additional days fee - we've already calculated this separately
+                        dynamic_parts.append(str(cost_components['additional_days_fee']))
+                    else:
+                        dynamic_parts.append(part)
+                
+                # Calculate total amendment fee
+                amendment_fee = sum(int(part) for part in dynamic_parts if part.isdigit())
+                cost_components['amendment_fee'] = amendment_fee
+                
+                # Amendment includes urgent fee, so don't add it separately
+                is_urgent = False
+                
+            except (ValueError, AttributeError):
+                logger.warning(f"Could not parse amendment fee: {event_pricing['amendment']}")
+                cost_components['amendment_fee'] = 0
+    
+    # Add urgent fee if needed (only if not already included in amendment)
+    if is_urgent and not is_amendment:
+        cost_components['urgent_fee'] = event_pricing['urgent']
     
     # Calculate total cost
     total_cost = sum(v for v in cost_components.values() if isinstance(v, (int, float)))
@@ -414,22 +419,21 @@ def calculate_non_ticketed_event_permit_cost(
     }
     
     # Add calculation notes
-    if is_urgent:
+    if is_urgent and not is_amendment:
         breakdown['calculation_notes'].append(f"Added urgent processing fee: {cost_components['urgent_fee']} AED")
     
     if is_amendment:
-        amendment_total = cost_components['amendment_fee'] + cost_components['business_amendment_fee']
-        if amendment_total > 0:
-            breakdown['calculation_notes'].append(f"Added amendment fees: {amendment_total} AED")
+        if cost_components['amendment_fee'] > 0:
+            breakdown['calculation_notes'].append(f"Added amendment fees: {cost_components['amendment_fee']} AED (includes urgent fee if applicable)")
     
     if cost_components['performer_fee'] > 0:
         breakdown['calculation_notes'].append(
-            f"Added {cost_components['performer_fee']} AED for {num_performers - included_performers} additional performer(s)"
+            f"Added {cost_components['performer_fee']} AED for {additional_performers} additional performer(s)"
         )
     
     if cost_components['additional_days_fee'] > 0:
         breakdown['calculation_notes'].append(
-            f"Added {cost_components['additional_days_fee']} AED for additional day(s)"
+            f"Added {cost_components['additional_days_fee']} AED for {num_days - included_days} additional day(s) at 800 AED/day"
         )
     
     # Add debug info in debug mode
@@ -443,6 +447,10 @@ def calculate_non_ticketed_event_permit_cost(
         breakdown['calculation_notes'].append(
             f"Included performers: {included_performers}, Additional performers: {additional_performers}"
         )
+        if is_amendment:
+            breakdown['calculation_notes'].append(
+                f"Amendment calculation: {event_pricing.get('amendment', 'N/A')}"
+            )
     
     return breakdown
 
